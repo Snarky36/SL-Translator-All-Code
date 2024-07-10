@@ -407,6 +407,112 @@ def calculate_overall_errors(data_array):
     plt.show()
 
 
+def calculate_overall_errors_v2(data_array):
+    total_number_of_sentences = len(data_array)
+    all_sentences = data_array
+
+    type1_damaging_sentences = set(calculate_Type1_errors(data_array, "damaging", True, True))
+    all_sentences = remove_sentences_from(type1_damaging_sentences, all_sentences)
+
+    type2_missing_glosses = set(calculate_Type2_missing_glosses(all_sentences, True))
+    all_sentences = remove_sentences_from(type2_missing_glosses, all_sentences)
+
+    type3_swapping_glosses = set(calculate_Type3_swapping_glosses(all_sentences, True))
+    all_sentences = remove_sentences_from(type3_swapping_glosses, all_sentences)
+
+    type4_additional_glosses = set(calculateType4_aditional_glosses(all_sentences, True))
+    all_sentences = remove_sentences_from(type4_additional_glosses, all_sentences)
+
+    type1_additional_sentences = set(calculate_Type1_errors(all_sentences, "additional", False, True))
+    all_sentences = remove_sentences_from(type1_additional_sentences, all_sentences)
+
+    good_sentences_count = len(all_sentences)
+
+    error_counts = {
+        "Type1 Damaging": len(type1_damaging_sentences),
+        "Type2 Missing": len(type2_missing_glosses),
+        "Type3 Swapping": len(type3_swapping_glosses),
+        "Type4 Additional": len(type4_additional_glosses),
+        "Type1 Repetitive Additional": len(type1_additional_sentences),
+        "Good Sentences": good_sentences_count
+    }
+
+    error_percentages = {error_type: count / total_number_of_sentences * 100 for error_type, count in
+                         error_counts.items()}
+    return error_counts, error_percentages
+
+
+def compare_models_v2(data1, data2, label1, label2):
+    _, percentages1 = calculate_overall_errors_v2(data1)
+    _, percentages2 = calculate_overall_errors_v2(data2)
+
+    labels = list(percentages1.keys())
+    x = range(len(labels))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    ax.bar(x, percentages1.values(), width, label=label1)
+    ax.bar([p + width for p in x], percentages2.values(), width, label=label2)
+    ax.set_xlabel('Error Types',fontsize=14)
+    ax.set_ylabel('Percentage',fontsize=14)
+    ax.set_title('Comparison of Error Percentages')
+    ax.set_xticks([p + width/2 for p in x])
+    ax.set_xticklabels(labels,fontsize=12)
+    ax.legend()
+
+    max_value_y = max(max(percentages1.values()), max(percentages2.values()))
+    ax.set_ylim(0, max_value_y + max_value_y / 5)
+    for i, (label, percentage) in enumerate(percentages1.items()):
+        ax.text(i, percentage + 1, f"{percentage:.2f}%", ha='center', va='bottom')
+        ax.text(i + width, percentages2[label] + 1, f"{percentages2[label]:.2f}%", ha='center', va='bottom')
+
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+def compare_four_models(data1, data2, data3, data4, label1, label2, label3, label4):
+
+    _, percentages1 = calculate_overall_errors_v2(data1)
+    _, percentages2 = calculate_overall_errors_v2(data2)
+    _, percentages3 = calculate_overall_errors_v2(data3)
+    _, percentages4 = calculate_overall_errors_v2(data4)
+
+    labels = list(percentages1.keys())
+    x = range(len(labels))
+    width = 0.2
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    ax.bar(x, percentages1.values(), width, label=label1)
+    ax.bar([p + width for p in x], percentages2.values(), width, label=label2)
+    ax.bar([p + 2 * width for p in x], percentages3.values(), width, label=label3)
+    ax.bar([p + 3 * width for p in x], percentages4.values(), width, label=label4)
+    ax.set_xlabel('Error Types',fontsize=14)
+    ax.set_ylabel('Percentage',fontsize=14)
+    ax.set_title('Comparison of Error Percentages Across Four Models')
+    ax.set_xticks([p + 1.5 * width for p in x])
+
+    ax.set_xticklabels(labels, fontsize=12)
+    ax.legend()
+
+    max_value_y = max(
+        max(percentages1.values()),
+        max(percentages2.values()),
+        max(percentages3.values()),
+        max(percentages4.values())
+    )
+    ax.set_ylim(0, max_value_y + max_value_y / 5)
+    for i, (label, percentage) in enumerate(percentages1.items()):
+        ax.text(i, percentage + 1, f"{percentage:.2f}%", ha='center', va='bottom')
+        ax.text(i + width, percentages2[label] + 1, f"{percentages2[label]:.2f}%", ha='center', va='bottom')
+        ax.text(i + 2 * width, percentages3[label] + 1, f"{percentages3[label]:.2f}%", ha='center', va='bottom')
+        ax.text(i + 3 * width, percentages4[label] + 1, f"{percentages4[label]:.2f}%", ha='center', va='bottom')
+
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
 def calculate_graphs(file_path):
     data = read_txt_file(file_path)
     calculate_Type1_repetitiveAditionale_avansat(data)
@@ -417,4 +523,17 @@ def calculate_graphs(file_path):
     calculate_overall_errors(data)
 
 
-calculate_graphs('./Data/GermanData.txt')
+
+file1 = './Data/EnglishLoraData.txt'
+file2 = './Data/EnglishData.txt'
+file3 = './Data/GermanDataMt5_Turbo.txt'
+file4 = './Data/GermanLoraData.txt'
+calculate_graphs('./Data/EnglishLoraData.txt')
+data1 = read_txt_file(file1)
+data2 = read_txt_file(file2)
+data3 = read_txt_file(file3)
+data4 = read_txt_file(file4)
+# compare_four_models(data1,data2,data3,data4,'LoRA English Model', 'English Model', 'LoRA German Model', 'German Model')
+# compare_models_v2(data2, data3, 'English Model', 'German Model')
+
+

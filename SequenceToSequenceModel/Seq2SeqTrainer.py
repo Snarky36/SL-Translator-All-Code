@@ -15,10 +15,10 @@ from Seq2SeqModel import Seq2Seq
 from Utils import load_checkpoint, save_checkpoint
 
 
-model_name = "zaha-german-gloss-24-06-LSTM-Attention_V1"
+model_name = "zaha-german-gloss-27-06-Attention-V1"
 prefix = "Translate this text into his gloss form:"
 max_input_length = 64
-signLanguageDatasets = SignLanguageDataset(prefix=prefix, max_length=max_input_length, path="./dataset/")
+signLanguageDatasets = SignLanguageDataset(prefix=prefix, max_length=max_input_length, path="./dataset/", language="en")
 
 tensor_board_name = input("Tensor Board folder name: ")
 writer = SummaryWriter(f"/out/LSTM_Checkpoints/runs/{model_name}-{tensor_board_name}")
@@ -137,15 +137,13 @@ def prepare_Model(
 
 
 def collate_fn(batch):
-    # Get input sequences and their lengths
+
     input_seqs = [torch.tensor(example['input_ids']) for example in batch]
     input_lens = torch.tensor([len(seq) for seq in input_seqs])
 
-    # Pad sequences to the maximum length in the batch
     max_len = max(input_lens)
     padded_seqs = [torch.nn.functional.pad(seq, (0, max_len - len(seq)), 'constant', 0) for seq in input_seqs]
 
-    # Stack padded sequences into a tensor
     padded_tensor = torch.stack(padded_seqs)
 
     return padded_tensor
@@ -219,6 +217,7 @@ def train(
         teacher_forcing_ratio=0.0,
         teacher_help_percent=0.0,
         adaptive_teacher_forcing=True,
+        adaptive_teacher_on_intervals=None,
         scheduler_patience=10,
         scheduler_threshold=0.001,
         scheduler_factor=0.5,
@@ -251,13 +250,16 @@ def train(
                                                     adaptive_ratio=0.3,
                                                     total_epochs=num_epochs,
                                                     nr_epochs_full_teaching=5,
-                                                    teacher_help_epoch_percent=teacher_help_percent)
+                                                    teacher_help_epoch_percent=teacher_help_percent,
+                                                    apply_on_intervals=adaptive_teacher_on_intervals
+                                                    )
     else:
         model.setup_adaptive_teacher_forcing(adaptive_teacher=adaptive_teacher_forcing,
                                              adaptive_ratio=0.3,
                                              total_epochs=num_epochs,
                                              nr_epochs_full_teaching=5,
-                                             teacher_help_epoch_percent=teacher_help_percent)
+                                             teacher_help_epoch_percent=teacher_help_percent,
+                                             apply_on_intervals=adaptive_teacher_on_intervals)
 
     device = model.module.get_device() if torch.cuda.device_count() > 1 else model.get_device()
     optimizer = create_optimizer(model=model, learning_rate=learning_rate, optimizer_choice=optimizer_choice,
@@ -405,27 +407,28 @@ def train(
 
 train(
     model_name=model_name,
-    num_epochs=50,
+    num_epochs=20,
     learning_rate=1e-3,
     batch_size=64,
     load_model=False,
     respect_dataset_max_length=True,
     save_at_nr_steps=10000,
-    save_at_nr_epoch=50,
+    save_at_nr_epoch=100,
     optimizer_choice="Adam",
     adaptive_teacher_forcing=True,
     teacher_forcing_ratio=0.5,
-    teacher_help_percent=0.3,
-    hidden_size=1000,
+    teacher_help_percent=1.0,
+    adaptive_teacher_on_intervals=[(0, 10), (13, 18)],
+    hidden_size=1024,
     num_layers=4,
-    encoder_dropout=0.6,
-    decoder_dropout=0.6,
+    encoder_dropout=0.3,
+    decoder_dropout=0.3,
     use_lstm=True,
     use_attention=True,
-    scheduler_patience=20,
+    scheduler_patience=5,
     scheduler_threshold=0.01,
     scheduler_factor=0.1,
-    manual_schedular_decreasing=True,
+    manual_schedular_decreasing=False,
     schedular_decreasing_epochs=[35]
     )
 

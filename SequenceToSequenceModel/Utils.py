@@ -4,7 +4,20 @@ import torch
 import spacy
 from torchtext.data.metrics import bleu_score
 import sys
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 
+
+def calculate_bleu_score(reference_sentence, generated_sentence):
+    reference = [reference_sentence.split()]
+    candidate = generated_sentence.split()
+
+    # Smoothing function to handle unseen ngrams
+    smoothing_function = SmoothingFunction().method4
+
+    # Calculate BLEU score
+    bleu_score = sentence_bleu(reference, candidate, smoothing_function=smoothing_function)
+
+    return bleu_score
 
 def translate_sentence(model, sentence, german, english, device, max_length=50):
     # print(sentence)
@@ -67,7 +80,7 @@ def bleu(data, model, german, english, device):
         trg = vars(example)["trg"]
 
         prediction = translate_sentence(model, src, german, english, device)
-        prediction = prediction[:-1]  # remove <eos> token
+        prediction = prediction[:-1]
 
         targets.append([trg])
         outputs.append(prediction)
@@ -111,7 +124,7 @@ def load_checkpoint(checkpoint, model, optimizer, use_attention=False, was_train
 
 
 
-def inference(model, tokenizer, sentence, max_length=50, use_attention=False):
+def inference(model, tokenizer, sentence, max_length=50, use_attention=False, apply_softmax=False, use_gru=False):
     model.eval()
     device = model.get_device()
 
@@ -127,7 +140,10 @@ def inference(model, tokenizer, sentence, max_length=50, use_attention=False):
         if use_attention:
             encoder_results, (hidden, cell) = model.encoder(sentence_tensor, use_attention=use_attention)
         else:
-            hidden, cell = model.encoder(sentence_tensor)
+            if use_gru:
+                hidden = model.encoder(sentence_tensor)
+            else:
+                hidden, cell = model.encoder(sentence_tensor)
 
     outputs = [tokenizer.convert_tokens_to_ids('[CLS]')]
 
@@ -135,14 +151,21 @@ def inference(model, tokenizer, sentence, max_length=50, use_attention=False):
 
     for i in range(max_length):
         previous_word_vector = torch.LongTensor([outputs[-1]]).to(device)
-        #print("previous_word_vector", previous_word_vector)
+        #print("previous_word_vector", previous_word_vector.item())
         with torch.no_grad():
             if use_attention:
                 output, hidden, cell = model.decoder(previous_word_vector, hidden, cell, encoder_results)
             else:
-                output, hidden, cell = model.decoder(previous_word_vector, hidden, cell)
+                if use_gru:
+                    output, hidden = model.decoder(previous_word_vector, hidden)
+                else:
+                    output, hidden, cell = model.decoder(previous_word_vector, hidden, cell)
+
+            if apply_softmax:
+                output = torch.softmax(output, dim=-1)
 
             best_guess = output.argmax(1).item()
+            #print("BEST Guess", best_guess)
 
         outputs.append(best_guess)
         if best_guess == tokenizer.convert_tokens_to_ids('[SEP]'):
@@ -156,9 +179,9 @@ def inference(model, tokenizer, sentence, max_length=50, use_attention=False):
 
     translated_sentence = ' '.join(tokenizer.convert_tokens_to_string(translated_tokens))
     translated_sentence = re.sub(pattern, '', translated_sentence)
+    translated_sentence = re.sub(r'\s+', ' ', translated_sentence).strip()
 
     return translated_sentence
 
-# Example usage:
 # translated_sentence = inference(model, tokenizer, "Your German sentence here.", device)
 # print(translated_sentence)

@@ -2,6 +2,7 @@ from transformers import (T5Tokenizer, Trainer, TrainingArguments, T5ForConditio
                           AutoModelForCausalLM, GenerationConfig,
                           Seq2SeqTrainingArguments, DataCollatorForSeq2Seq, Seq2SeqTrainer, AutoModelForSeq2SeqLM,
                           pipeline)
+from transformers.integrations import TensorBoardCallback
 
 from datasets import load_dataset, load_metric
 from trl import SFTTrainer
@@ -18,9 +19,9 @@ import pandas as pd
 #model_checkpoint = "deutsche-telekom/mt5-small-sum-de-mit-v1"
 # model_checkpoint = "GermanT5/t5-efficient-gc4-all-german-small-el32"
 # model_checkpoint = "GermanT5/t5-efficient-gc4-all-german-large-nl36"
-# model_checkpoint = "google/mt5-base"
-model_checkpoint = "google/mt5-large"
-decoder_model_checkpoint = "xlm-clm-ende-1024"
+model_checkpoint = "google/mt5-base"
+#model_checkpoint = "google/mt5-large"
+#decoder_model_checkpoint = "xlm-clm-ende-1024"
 # "t5-small"
 # "google/flan-t5-small"
 tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
@@ -32,8 +33,8 @@ max_target_length = 256
 rouge = evaluate.load("rouge")
 
 global_file_path = '/out/'
-global_models_folder = "Models_15_04_24"
-global_model_name = "T5_GermanMT5Model_Enhanced_turbo"
+global_models_folder = "Models_7_03_24"
+global_model_name = "T5_GermanMT5Model_Enhanced_turbo_LoRA"
 log_manager = LogManager(global_file_path, global_models_folder, global_model_name, model_checkpoint)
 metric_eval = MetricEvaluator(tokenizer, log_manager)
 
@@ -181,26 +182,26 @@ def datasetInfo(dataset="german", load_enhanced_dataset=False):
     else:
         if load_enhanced_dataset:
             dataset_train = load_dataset(
-            '/custom_datasets/Pheonix/',
+            '/datasets/Pheonix/',
                 data_files='PHOENIX-2014-T.train-enhanced.csv',
                 split='train'
             )
             print("Enhanced size:", len(dataset_train))
         else:
             dataset_train = load_dataset(
-            '/custom_datasets/Pheonix/',
+            '/datasets/Pheonix/',
                 data_files='PHOENIX-2014-T.train.corpus2.csv',
                 split='train'
             )
 
         dataset_test = load_dataset(
-            '/custom_datasets/Pheonix/',
+            '/datasets/Pheonix/',
             data_files='PHOENIX-2014-T.test.corpus2.csv',
             split='train'
         )
 
         dataset_eval = load_dataset(
-            '/custom_datasets/Pheonix/',
+            '/datasets/Pheonix/',
             data_files='PHOENIX-2014-T.dev.corpus2.csv',
             split='train'
         )
@@ -216,13 +217,13 @@ def datasetInfo(dataset="german", load_enhanced_dataset=False):
 
 def getDatasets():
     dataset_train = load_dataset(
-        '/custom_datasets/Pheonix/',
+        '/datasets/Pheonix/',
         data_files='PHOENIX-2014-T.train.corpus2.csv',
         split='train'
     )
 
     dataset_test = load_dataset(
-        '/custom_datasets/Pheonix/',
+        '/datasets/Pheonix/',
         data_files='PHOENIX-2014-T.test.corpus2.csv',
         split='train'
     )
@@ -276,13 +277,16 @@ def trainModel_Seq2SeqTrainer():
     model.config.max_new_tokens = 512
     data_collector = prepareTariningCollector()
     output_dir = global_file_path + global_models_folder + "/" + global_model_name
+    logging_dir = global_file_path + global_models_folder + "/runs"
+
 
     training_arguments = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         optim=optimizer,
-        warmup_steps=100,
+        #warmup_steps=400,
+        warmup_ratio=0.2,
         weight_decay=0.01,
-        logging_dir="/out/",
+        logging_dir=logging_dir,
         logging_steps=100,
         evaluation_strategy='steps',
         learning_rate=2e-5,
@@ -296,7 +300,8 @@ def trainModel_Seq2SeqTrainer():
         num_train_epochs=Num_Training_Epochs,
         fp16=True,
         dataloader_num_workers=4,
-        seed=30
+        seed=30,
+        report_to=["tensorboard"]
     )
 
     log_manager.setTrainingArguments(training_arguments)
@@ -312,7 +317,8 @@ def trainModel_Seq2SeqTrainer():
         eval_dataset=eval_tokenized,
         tokenizer=tokenizer,
         data_collator=data_collector,
-        compute_metrics=metric_eval.compute_metricBlue
+        compute_metrics=metric_eval.compute_metricBlue,
+        callbacks=[TensorBoardCallback()]
     )
 
     showModelInfo(model)
@@ -326,7 +332,7 @@ def trainModel_Seq2SeqTrainer():
     trainer.train()
     print("Fine tunning has finished!")
     # germna_T5_textToGloss;
-    save_model_path = log_manager.get_model_full_path() + "/finalModel"
+    save_model_path = log_manager.get_model_full_path() + "/T5_GermanMT5Model_Enhanced_turbo"
     trainer.save_model(save_model_path)
     print("Model will be saved in ", save_model_path)
     # sper sa nu aiba iar loss 0
@@ -342,10 +348,10 @@ def trainModel_LoRA():
     data_collector = prepareTariningCollector()
 
     lora_config = LoraConfig(
-        r=32,  # Note the rank (r) hyper-parameter, which defines the rank/dimension of the adapter to be trained.
+        r=64,
         lora_alpha=32,
         target_modules=["q", "v"],
-        lora_dropout=0.35,
+        lora_dropout=0.20,
         bias="none",
         task_type=TaskType.SEQ_2_SEQ_LM
     )
@@ -356,9 +362,11 @@ def trainModel_LoRA():
 
     train_tokenized, test_tokenized, eval_tokenized = datasetInfo(dataset_language,True)
     output_dir = global_file_path + global_models_folder + "/" + global_model_name
+    logging_dir = global_file_path + global_models_folder + "/runs"
 
     peft_training_args = TrainingArguments(
         output_dir=output_dir,
+        logging_dir=logging_dir,
         #auto_find_batch_size=True,
         learning_rate=1e-3,
         logging_steps=500,
@@ -372,6 +380,7 @@ def trainModel_LoRA():
         fp16=True,
         dataloader_num_workers=4,
         seed=30,
+        report_to=["tensorboard"]
     )
 
     peft_trainer = Trainer(
@@ -381,6 +390,7 @@ def trainModel_LoRA():
         eval_dataset=eval_tokenized,
         #data_collator=data_collector,
         #compute_metrics=metric_eval.compute_metricBlue
+        callbacks=[TensorBoardCallback()]
     )
 
     setTokenizerParalelism("false")
@@ -393,7 +403,7 @@ def trainModel_LoRA():
     if start == "Y" or start == "y":
         peft_trainer.train()
         print("Finetunning has finished!")
-        peft_model_path = log_manager.get_model_full_path() + "/finalLoraModel"
+        peft_model_path = log_manager.get_model_full_path() + "/MT5_German_LoRA"
         print("Saving path for lora :", peft_model_path)
         peft_trainer.model.save_pretrained(peft_model_path)
         tokenizer.save_pretrained(peft_model_path)
@@ -459,12 +469,12 @@ def trainModel_NEFT():
                        file_path="/out/Models_27_02_24/errors.txt")
     trainer.train()
 
-    save_model_path = metrics_global_file_path + "/finalModel"
+    save_model_path = metrics_global_file_path + "/T5_GermanMT5Model_Enhanced_turbo"
     trainer.save_model(save_model_path)
 
 
 def inference_LoRAModel():
-    peft_model_path = log_manager.get_model_full_path() + "/finalLoraModel"
+    peft_model_path = log_manager.get_model_full_path() + "/MT5_German_LoRA"
     original_model = AutoModelForSeq2SeqLM.from_pretrained(model_checkpoint, torch_dtype=torch.bfloat16)
     peft_model_base = AutoModelForSeq2SeqLM.from_pretrained(peft_model_path,torch_dtype=torch.bfloat16)
 
@@ -564,23 +574,6 @@ def main_function():
 
     option = int(input("Option: "))
 
-    # match option:
-    #     case 1:
-    #         trainModel_Seq2SeqTrainer()
-    #     case 2:
-    #         global model_checkpoint
-    #         model_checkpoint = decoder_model_checkpoint
-    #         trainModel_NEFT()
-    #     case 3:
-    #         inference()
-    #     case 4:
-    #         compareModels()
-    #     case 5:
-    #         datasetInfo()
-    #     case 6:
-    #         log_manager.write_training_Args()
-    #     case 7:
-    #         trainModel_LoRA()
     if option == 1:
         trainModel_Seq2SeqTrainer()
     elif option == 2:
@@ -596,10 +589,6 @@ def main_function():
     elif option == 7:
         inference_LoRAModel()
     elif option == 8:
-        # tokenized_train, tokenized_test = datasetInfo("american")
-        # print(tokenized_train)
-        # print(tokenized_test)
-        #return tokenized_train_dataset, tokenized_test_dataset
         metricEvaluator()
 
     else:

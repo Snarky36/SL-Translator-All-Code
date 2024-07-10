@@ -6,7 +6,7 @@ from GlossToPoseModel.PoseLooker import PoseLooker, get_glossDict, get_word_to_g
 import Levenshtein
 from sentence_transformers import SentenceTransformer, util
 import numpy as np
-
+import time
 
 speed_up = True
 
@@ -112,12 +112,19 @@ def computePoseGif(gloss_sentence, words_to_process_while_looking, speed_up=True
 
     title = compute_title(gloss_sentence)
     print("Title", title)
+
+    start_searching_time = time.time()
+
     glosses, skipped_glosses = preprocess_sentence(gloss_sentence=gloss_sentence, k=words_to_process_while_looking)
+    searching_time = time.time() - start_searching_time
+
     print(glosses)
     missing_glosses = PoseLooker(glosses, title)
 
     pose_path = os.path.join(os.path.dirname(__file__), f"""assets/GeneratedPoses/{title}.pose""")
     gif_path = os.path.join(os.path.dirname(__file__), f"""assets/GenereatedGifs/{title}.gif""")
+
+    concatenation_start_time = time.time()
 
     with open(pose_path, "rb") as f:
         p = Pose.read(f.read())
@@ -132,9 +139,9 @@ def computePoseGif(gloss_sentence, words_to_process_while_looking, speed_up=True
     v = PoseVisualizer(p)
 
     v.save_gif(gif_path, v.draw())
-
+    concatenation_time = time.time() - concatenation_start_time
     print("From this sentence this glosses could not be found or changed", skipped_glosses, missing_glosses)
 
-    return gif_path
+    return gif_path, searching_time, concatenation_time
 
 #computePoseGif(gloss_sentence,5)

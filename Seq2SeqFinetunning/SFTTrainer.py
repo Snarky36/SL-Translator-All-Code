@@ -233,7 +233,7 @@ def train():
 
     # trainer.train()
     #
-    # save_model_path = metrics_global_file_path + "/finalModel"
+    # save_model_path = metrics_global_file_path + "/T5_GermanMT5Model_Enhanced_turbo"
     # trainer.save_model(save_model_path)
 
 
@@ -243,7 +243,7 @@ def inference():
     # generate_kwargs = {"do_sample": True, "temperature": 0.0001, "max_new_tokens": 1024}
 
     model = pipeline("text-generation",
-                     model="/out/Models_3_03_24/finalModel",
+                     model="/out/Models_3_03_24/T5_GermanMT5Model_Enhanced_turbo",
                      # max_new_tokens=500,
                      max_length=500,
                      tokenizer=tokenizer
